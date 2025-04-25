@@ -79,40 +79,31 @@ def find_member_by_display_name(guild, name):
     return None
 
 
+
 @bot.command()
-async def givexp(ctx, *, args: str):
-    if ctx.channel.name != "🔒│admin-xp-give":
-        return
-
-    if "XP Manager" not in [role.name for role in ctx.author.roles]:
-        await ctx.send("❌ You need the 'XP Manager' role to use this command.")
-        return
-
-    try:
-        parts = args.rsplit(' ', 1)
-        display_name = parts[0].strip()
-        amount = int(parts[1].strip())
-    except (ValueError, IndexError):
-        await ctx.send("❌ Invalid command format. Use `!givexp DisplayName XP`.")
-        return
-
-    await ctx.guild.chunk()
-    member = find_member_by_display_name(ctx.guild, display_name)
-
-    if not member:
-        await ctx.send(f"❌ Could not find a member with display name '{display_name}'.")
+@commands.has_role("XP Manager")
+async def givexp(ctx, member: discord.Member, amount: int, *, reason: str = None):
+    allowed_channel = "🔒│admin-xp-give"
+    if ctx.channel.name != allowed_channel:
         return
 
     user_id = str(member.id)
     xp_data[user_id] = xp_data.get(user_id, 0) + amount
     save_xp()
 
-    print(f"[DEBUG] Adding {amount} XP to {member.display_name} ({member.id})")
-    await assign_role_by_xp(member, xp_data[user_id])
-    print(f"[DEBUG] Assigned role if necessary.")
+    # Send confirmation to current channel
+    await ctx.send(f"✅ {member.mention} received {amount} XP! {'📝 ' + reason if reason else ''}")
 
-    await ctx.send(f"✅ `{member.display_name}` received **{amount} XP!**")
-    print(f"[DEBUG] Confirmation message sent.")
+    # 💬 Send XP notice to 📢│announcement
+    announcement_channel = discord.utils.get(ctx.guild.text_channels, name="📢│announcement")
+    if announcement_channel:
+        await announcement_channel.send(
+            f"✨ {member.mention} just gained **{amount} XP**! {'📝 ' + reason if reason else ''}"
+        )
+
+    # 🎖 Try to assign new role and announce level up if needed
+    await assign_role_by_xp(member, xp_data[user_id])
+
 
 @bot.command()
 async def removexp(ctx, *, args: str):
@@ -199,7 +190,8 @@ async def daily_leaderboard():
                         value=f"XP: {xp}",
                         inline=False
                     )
-            embed.set_footer(text="Updated daily at 8AM", icon_url=bot.user.avatar.url if bot.user.avatar else discord.Embed.Empty)
+            icon = bot.user.avatar.url if bot.user.avatar else None
+            embed.set_footer(text="Updated daily at 8AM", icon_url=icon)
             await leaderboard_channel.send(embed=embed)
 
 keep_alive()
